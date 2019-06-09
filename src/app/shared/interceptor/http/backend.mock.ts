@@ -1,185 +1,138 @@
-import {MockBackend, MockConnection} from '@angular/http/testing';
-import {Http, Request, RequestMethod, RequestOptions, Response, ResponseOptions, XHRBackend} from '@angular/http';
-import {setTimeout} from 'timers';
-import {Injectable} from '@angular/core';
-import {HttpStatus} from '../../http.status';
-import {HttpError} from '../../error/http.error';
-import 'rxjs/add/operator/map';
+import { Injectable } from '@angular/core';
+import { HttpRequest, HttpResponse, HttpHandler, HttpEvent, HttpInterceptor, HTTP_INTERCEPTORS } from '@angular/common/http';
+import { Observable } from 'rxjs/Observable';
+import 'rxjs/add/observable/of';
+import 'rxjs/add/observable/throw';
+import 'rxjs/add/operator/delay';
+import 'rxjs/add/operator/mergeMap';
+import 'rxjs/add/operator/materialize';
+import 'rxjs/add/operator/dematerialize';
+
 @Injectable()
-export class BackendMock extends Http {
+export class BackendMock implements HttpInterceptor {
 
-  // Instance variables
-  // --------------------------------------------------------------------------
-  private mockBackend: MockBackend;
-  private reqestOptions: RequestOptions;
+  constructor() { }
 
+  intercept(request: HttpRequest<any>, next: HttpHandler): Observable<HttpEvent<any>> {
+    // array in local storage for registered users
+    let users: any[] = JSON.parse(localStorage.getItem('users')) || [];
 
-  // Append test code methods
-  // --------------------------------------------------------------------------
-  private static getResponseStatus(req: Request): {code: number, msgs?: string[]} {
-    // change password
-    if (req.url.endsWith('/dr/re/password')) {
-      return BackendMock.dr_re_password(req);
-    }
-    // global
-    if (req.method === RequestMethod.Put) {
-      return {code: HttpStatus.NotContent};
-    }
-    return {code: HttpStatus.OK};
-  }
+    // wrap in delayed observable to simulate server api call
+    return Observable.of(null).mergeMap(() => {
 
-  // change password
-  private static dr_re_password(req: Request): {code: number, msgs?: string[]} {
-    // request data
-    const data = JSON.parse(req.getBody());
-    // statuc code
-    if (data.currentPassword === 'error') {
-      return {code: HttpStatus.BadRequest, msgs: ['COMMON.SAVE_FAILED']};
-    }
-    return {code: HttpStatus.NotContent};
-  }
-
-
-  // Json path
-  // --------------------------------------------------------------------------
-  private static jsonPath(req: Request): string {
-    const array = req.url.split('?');
-
-    // /api/dr/re/user_edit/delete_user
-    if (array[0].startsWith('/api/dr/re/user_edit/delete_user')) {
-      return this.json_dr_re_user_edit_delete_user(req);
-    }
-    // /api/pr/re/user_edit/delete_user
-    if (array[0].startsWith('/api/pr/re/user_edit/delete_user')) {
-      return this.json_pr_re_user_edit_delete_user(req);
-    }
-
-
-
-    switch (array[0]) {
-      case '/api/dr/re/detail_user/user': // ユーザ詳細
-      case '/api/ba/partner_companies':
-      case '/api/group/recipients':    // グループ一覧
-        return `${array[0]}/${array[1]}.json`;
-    }
-
-    return null;
-  }
-
-  // /api/dr/re/user_edit/delete_user
-  private static json_dr_re_user_edit_delete_user(req: Request): string {
-    return '/api/dr/re/user_edit/delete_user.json';
-  }
-
-  // /api/pr/re/user_edit/delete_user
-  private static json_pr_re_user_edit_delete_user(req: Request): string {
-    return '/api/pr/re/user_edit/delete_user.json';
-  }
-
-  // Helper methods
-  // --------------------------------------------------------------------------
-  private static parseQuery(query: string): {} {
-    const array = query.split('&');
-    const ret = {};
-    array.forEach((s: string) => {
-      const pair = s.split('=');
-      ret[pair[0]] = pair[1];
-    });
-    return ret;
-  }
-
-
-  // Constructor
-  // --------------------------------------------------------------------------
-  constructor(private realHttp: XHRBackend, backend: MockBackend, options: RequestOptions) {
-    super(backend, options);
-    // variables
-    this.mockBackend = backend;
-    this.reqestOptions = options;
-    // initilizer
-    this.initialize(backend, options);
-  }
-
-
-  // Helper
-  // --------------------------------------------------------------------------
-  private newRealMockResponse(conn: MockConnection) {
-    const req = conn.request;
-    const options = new RequestOptions({
-      method: req.method,
-      body: req.getBody(),
-      url: req.url,
-      headers: req.headers,
-      withCredentials: req.withCredentials,
-      responseType: req.responseType,
-    });
-    new Http(this.realHttp, this.reqestOptions).request(req.url, options).subscribe((res: Response) => {
-      conn.mockRespond(res);
-    }, (error: any) => {
-      if (error.status === 404) {
-        return conn.mockRespond(new Response(new ResponseOptions()));
-      }
-      if (error instanceof Response) {
-        const res = error as Response;
-        conn.mockError(new HttpError(new ResponseOptions({
-          url: res.url,
-          status: res.status,
-          statusText: res.statusText,
-          type: res.type,
-          headers: res.headers,
-          body: res
-        })));
-      } else {
-        conn.mockError(error);
-      }
-    });
-  }
-
-
-  // Initializer
-  // --------------------------------------------------------------------------
-  initialize(backend: MockBackend, options: RequestOptions) {
-    console.log('# Init Mock backend');
-
-    // start connection
-    backend.connections.subscribe((conn: MockConnection) => {
-      if (!conn.request.url.startsWith('/api')) {
-        return this.newRealMockResponse(conn);
-      }
-
-      setTimeout(() => {
-        // path
-        const arr = conn.request.url.split('?');
-        // uri
-        let path = BackendMock.jsonPath(conn.request);
-        if (!path) {
-          path = `assets/mock/json${arr[0]}`;
-          path += (1 < arr.length ? `/${arr[1]}` : '') + '.json';
-
-        } else {
-          path = `assets/mock/json${path}`;
-        }
-        console.log('url => %s, filepath => %s', conn.request.url, path);
-
-        // http status code
-        const status = BackendMock.getResponseStatus(conn.request);
-
-        if (400 <= status.code) {
-          const res = new HttpError(new ResponseOptions({
-            status: status.code,
-            body: JSON.stringify({error_codes: status.msgs})
-          }));
-          return conn.mockError(res);
-        }
-
-        new Http(backend, options).get(path).map(res => res.json()).subscribe(data => {
-          conn.mockRespond(new Response(new ResponseOptions({
-            status: status.code,
-            body: data
-          })));
+      // authenticate
+      if (request.url.endsWith('/api/authenticate') && request.method === 'POST') {
+        // find if any user matches login credentials
+        let filteredUsers = users.filter(user => {
+          return user.username === request.body.username && user.password === request.body.password;
         });
-      }, 500);
 
-    });
+        if (filteredUsers.length) {
+          // if login details are valid return 200 OK with user details and fake jwt token
+          let user = filteredUsers[0];
+          let body = {
+            id: user.id,
+            username: user.username,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            token: 'fake-jwt-token'
+          };
+
+          return Observable.of(new HttpResponse({ status: 200, body: body }));
+        } else {
+          // else return 400 bad request
+          return Observable.throw('Username or password is incorrect');
+        }
+      }
+
+      // get users
+      if (request.url.endsWith('/api/users') && request.method === 'GET') {
+        // check for fake auth token in header and return users if valid, this security is implemented server side in a real application
+        if (request.headers.get('Authorization') === 'Bearer fake-jwt-token') {
+          return Observable.of(new HttpResponse({ status: 200, body: users }));
+        } else {
+          // return 401 not authorised if token is null or invalid
+          return Observable.throw('Unauthorised');
+        }
+      }
+
+      // get user by id
+      if (request.url.match(/\/api\/users\/\d+$/) && request.method === 'GET') {
+        // check for fake auth token in header and return user if valid, this security is implemented server side in a real application
+        if (request.headers.get('Authorization') === 'Bearer fake-jwt-token') {
+          // find user by id in users array
+          let urlParts = request.url.split('/');
+          let id = parseInt(urlParts[urlParts.length - 1]);
+          let matchedUsers = users.filter(user => { return user.id === id; });
+          let user = matchedUsers.length ? matchedUsers[0] : null;
+
+          return Observable.of(new HttpResponse({ status: 200, body: user }));
+        } else {
+          // return 401 not authorised if token is null or invalid
+          return Observable.throw('Unauthorised');
+        }
+      }
+
+      // create user
+      if (request.url.endsWith('/api/users') && request.method === 'POST') {
+        // get new user object from post body
+        let newUser = request.body;
+
+        // validation
+        let duplicateUser = users.filter(user => { return user.username === newUser.username; }).length;
+        if (duplicateUser) {
+          return Observable.throw('Username "' + newUser.username + '" is already taken');
+        }
+
+        // save new user
+        newUser.id = users.length + 1;
+        users.push(newUser);
+        localStorage.setItem('users', JSON.stringify(users));
+
+        // respond 200 OK
+        return Observable.of(new HttpResponse({ status: 200 }));
+      }
+
+      // delete user
+      if (request.url.match(/\/api\/users\/\d+$/) && request.method === 'DELETE') {
+        // check for fake auth token in header and return user if valid, this security is implemented server side in a real application
+        if (request.headers.get('Authorization') === 'Bearer fake-jwt-token') {
+          // find user by id in users array
+          let urlParts = request.url.split('/');
+          let id = parseInt(urlParts[urlParts.length - 1]);
+          for (let i = 0; i < users.length; i++) {
+            let user = users[i];
+            if (user.id === id) {
+              // delete user
+              users.splice(i, 1);
+              localStorage.setItem('users', JSON.stringify(users));
+              break;
+            }
+          }
+
+          // respond 200 OK
+          return Observable.of(new HttpResponse({ status: 200 }));
+        } else {
+          // return 401 not authorised if token is null or invalid
+          return Observable.throw('Unauthorised');
+        }
+      }
+
+      // pass through any requests not handled above
+      return next.handle(request);
+
+    })
+
+    // call materialize and dematerialize to ensure delay even if an error is thrown (https://github.com/Reactive-Extensions/RxJS/issues/648)
+      .materialize()
+      .delay(500)
+      .dematerialize();
   }
 }
+
+export let backendMock = {
+  // use fake backend in place of Http service for backend-less development
+  provide: HTTP_INTERCEPTORS,
+  useClass: BackendMock,
+  multi: true
+};

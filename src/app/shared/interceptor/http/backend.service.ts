@@ -5,6 +5,7 @@ import {environment} from '../../../../environments/environment';
 import {AuthenticationService} from '../../../services/authentication.service';
 import {HttpError} from '../../error/http.error';
 import {Profile} from '../../profile';
+import 'rxjs/add/operator/catch';
 
 @Injectable()
 export class BackendService extends Http {
@@ -99,9 +100,6 @@ export class BackendService extends Http {
       options.headers = new Headers();
     }
 
-    if (!this.auth.isEnableExpire()) {
-      this.auth.refreshToken();
-    }
     options.headers.append('Content-Type', 'application/json; charset=utf-8');
     options.headers.append('Accept', 'application/json');
 
