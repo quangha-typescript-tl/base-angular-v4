@@ -23,6 +23,7 @@ export class TopComponent implements OnInit {
 
   deleteUser(id: number) {
     this.userService.delete(id).subscribe(() => { this.loadAllUsers() });
+    alert('delete success')
   }
 
   private loadAllUsers() {

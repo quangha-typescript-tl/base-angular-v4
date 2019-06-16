@@ -24,11 +24,11 @@ export class RegisterComponent {
     this.userService.create(this.model)
       .subscribe(
         data => {
-          // this.alertService.success('Registration successful', true);
+          alert('Registration successful');
           this.router.navigate(['/login']);
         },
         error => {
-          // this.alertService.error(error);
+          alert('error');
           this.loading = false;
         });
   }
